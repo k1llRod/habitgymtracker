@@ -1,5 +1,6 @@
 import '../../data/models/exercise_model.dart';
 import '../../data/models/habit_model.dart';
+import '../../data/models/routine_model.dart';
 
 class DefaultData {
   static final List<Habit> defaultHabits = [
@@ -470,6 +471,63 @@ class DefaultData {
     'viernes_a': 'Viernes (Opción A): Femorales & Glúteos',
     'viernes_b': 'Viernes (Opción B): Día de Brazos (Bíceps & Tríceps)',
   };
+
+  static final List<Routine> defaultRoutines = [
+    Routine(
+      id: 'rot_lunes',
+      name: 'Lunes: Pectorales & Bíceps',
+      dayKey: 'lunes',
+      description: 'Enfoque en pecho completo, congestión de bíceps y fuerza base.',
+      icon: '💪',
+      orderIndex: 0,
+      isCustom: false,
+    ),
+    Routine(
+      id: 'rot_martes',
+      name: 'Martes: Espalda & Tríceps',
+      dayKey: 'martes',
+      description: 'Amplitud de dorsales, densidad y fuerza en tríceps.',
+      icon: '🏋️',
+      orderIndex: 1,
+      isCustom: false,
+    ),
+    Routine(
+      id: 'rot_miercoles',
+      name: 'Miércoles: Piernas (Cuádriceps & Pantorrillas)',
+      dayKey: 'miercoles',
+      description: 'Trabajo pesado de cuádriceps, sentadilla, prensa y gemelos.',
+      icon: '🦵',
+      orderIndex: 2,
+      isCustom: false,
+    ),
+    Routine(
+      id: 'rot_jueves',
+      name: 'Jueves: Hombros & Trapecio',
+      dayKey: 'jueves',
+      description: 'Deltoides anterior, lateral, posterior y encogimientos de trapecio.',
+      icon: '🎯',
+      orderIndex: 3,
+      isCustom: false,
+    ),
+    Routine(
+      id: 'rot_viernes_a',
+      name: 'Viernes (Opción A): Femorales & Glúteos',
+      dayKey: 'viernes_a',
+      description: 'Peso muerto rumano, curl femoral y glúteos.',
+      icon: '🔥',
+      orderIndex: 4,
+      isCustom: false,
+    ),
+    Routine(
+      id: 'rot_viernes_b',
+      name: 'Viernes (Opción B): Día de Brazos (Bíceps & Tríceps)',
+      dayKey: 'viernes_b',
+      description: 'Super series de brazos, hipertrofia de bíceps y tríceps al fallo.',
+      icon: '⚡',
+      orderIndex: 5,
+      isCustom: false,
+    ),
+  ];
 
   static String getDayKeyForDateTime(DateTime dt, {bool fridayOptB = false}) {
     switch (dt.weekday) {

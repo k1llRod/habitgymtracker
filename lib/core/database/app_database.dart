@@ -28,8 +28,9 @@ class AppDatabase {
     return await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onCreate: _createDB,
+        onUpgrade: _onUpgradeDB,
       ),
     );
   }
@@ -60,7 +61,20 @@ class AppDatabase {
       )
     ''');
 
-    // 3. Exercises Table
+    // 3. Routines Table
+    await db.execute('''
+      CREATE TABLE routines (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        dayKey TEXT NOT NULL UNIQUE,
+        description TEXT,
+        icon TEXT,
+        orderIndex INTEGER NOT NULL,
+        isCustom INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    // 4. Exercises Table
     await db.execute('''
       CREATE TABLE exercises (
         id TEXT PRIMARY KEY,
@@ -70,11 +84,13 @@ class AppDatabase {
         defaultSets INTEGER NOT NULL,
         defaultReps TEXT NOT NULL,
         isWarmup INTEGER NOT NULL,
-        orderIndex INTEGER NOT NULL
+        orderIndex INTEGER NOT NULL,
+        imageUrl TEXT,
+        instructions TEXT
       )
     ''');
 
-    // 4. Workout Sessions Table
+    // 5. Workout Sessions Table
     await db.execute('''
       CREATE TABLE workout_sessions (
         id TEXT PRIMARY KEY,
@@ -87,7 +103,7 @@ class AppDatabase {
       )
     ''');
 
-    // 5. Workout Sets Table
+    // 6. Workout Sets Table
     await db.execute('''
       CREATE TABLE workout_sets (
         id TEXT PRIMARY KEY,
@@ -107,11 +123,50 @@ class AppDatabase {
     for (final habit in DefaultData.defaultHabits) {
       batch.insert('habits', habit.toMap());
     }
+    // Seed default routines
+    for (final routine in DefaultData.defaultRoutines) {
+      batch.insert('routines', routine.toMap());
+    }
     // Seed default exercises
     for (final ex in DefaultData.defaultExercises) {
       batch.insert('exercises', ex.toMap());
     }
     await batch.commit(noResult: true);
+  }
+
+  Future<void> _onUpgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // 1. Create routines table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS routines (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          dayKey TEXT NOT NULL UNIQUE,
+          description TEXT,
+          icon TEXT,
+          orderIndex INTEGER NOT NULL,
+          isCustom INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+
+      // 2. Add imageUrl and instructions columns to exercises if missing
+      try {
+        await db.execute('ALTER TABLE exercises ADD COLUMN imageUrl TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE exercises ADD COLUMN instructions TEXT');
+      } catch (_) {}
+
+      // 3. Seed default routines if empty
+      final existingRoutines = await db.query('routines');
+      if (existingRoutines.isEmpty) {
+        final batch = db.batch();
+        for (final r in DefaultData.defaultRoutines) {
+          batch.insert('routines', r.toMap());
+        }
+        await batch.commit(noResult: true);
+      }
+    }
   }
 
   Future<void> close() async {

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/constants/default_routines.dart';
 import '../../data/models/exercise_model.dart';
+import '../../data/models/routine_model.dart';
 import '../../data/models/workout_session_model.dart';
 import '../../data/models/workout_set_model.dart';
 import '../../data/repositories/workout_repository.dart';
@@ -14,6 +15,7 @@ class WorkoutProvider extends ChangeNotifier {
 
   String _selectedDayKey = 'lunes';
   DateTime _selectedDate = DateTime.now();
+  List<Routine> _routines = [];
   List<Exercise> _exercises = [];
   WorkoutSession? _currentSession;
   List<WorkoutSet> _currentSets = [];
@@ -28,6 +30,7 @@ class WorkoutProvider extends ChangeNotifier {
 
   String get selectedDayKey => _selectedDayKey;
   DateTime get selectedDate => _selectedDate;
+  List<Routine> get routines => _routines;
   List<Exercise> get exercises => _exercises;
   WorkoutSession? get currentSession => _currentSession;
   List<WorkoutSet> get currentSets => _currentSets;
@@ -35,9 +38,24 @@ class WorkoutProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get volumeHistory => _volumeHistory;
   bool get isLoading => _isLoading;
 
+  Routine? get currentRoutine {
+    try {
+      return _routines.firstWhere((r) => r.dayKey == _selectedDayKey);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String get currentRoutineTitle {
+    final routine = currentRoutine;
+    if (routine != null) return routine.name;
+    return DefaultData.dayNames[_selectedDayKey] ?? 'Entrenamiento';
+  }
+
   String get formattedDate => DateFormat('yyyy-MM-dd').format(_selectedDate);
 
-  double get currentSessionVolume => VolumeCalculator.calculateTotalVolume(_currentSets);
+  double get currentSessionVolume =>
+      VolumeCalculator.calculateTotalVolume(_currentSets);
   int get completedSetsCount => _currentSets.where((s) => s.isCompleted).length;
   int get totalSetsCount => _currentSets.length;
 
@@ -46,6 +64,14 @@ class WorkoutProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      _routines = await _repository.getRoutines();
+
+      // Ensure selected day exists among routines if possible
+      if (_routines.isNotEmpty &&
+          !_routines.any((r) => r.dayKey == _selectedDayKey)) {
+        _selectedDayKey = _routines.first.dayKey;
+      }
+
       _exercises = await _repository.getExercisesForDay(_selectedDayKey);
       _currentSession = await _repository.getOrCreateSession(
         formattedDate,
@@ -53,7 +79,7 @@ class WorkoutProvider extends ChangeNotifier {
       );
       _currentSets = await _repository.getSetsForSession(_currentSession!.id);
 
-      // If session is newly created and has no sets, auto-generate default sets for each exercise!
+      // If session is newly created and has no sets, auto-generate default sets for each exercise
       if (_currentSets.isEmpty) {
         for (final ex in _exercises) {
           for (int i = 1; i <= ex.defaultSets; i++) {
@@ -99,6 +125,78 @@ class WorkoutProvider extends ChangeNotifier {
     loadData();
   }
 
+  // --- ROUTINES MANAGEMENT ---
+  Future<void> addOrUpdateRoutine(Routine routine) async {
+    await _repository.saveRoutine(routine);
+    _routines = await _repository.getRoutines();
+    if (_selectedDayKey == routine.dayKey) {
+      await loadData();
+    } else {
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteRoutine(Routine routine) async {
+    await _repository.deleteRoutine(routine.id, routine.dayKey);
+    _routines = await _repository.getRoutines();
+    if (_selectedDayKey == routine.dayKey) {
+      _selectedDayKey = _routines.isNotEmpty ? _routines.first.dayKey : 'lunes';
+    }
+    await loadData();
+  }
+
+  // --- EXERCISES MANAGEMENT ---
+  Future<List<Exercise>> getExercisesForRoutine(String dayKey) async {
+    return await _repository.getExercisesForDay(dayKey);
+  }
+
+  Future<void> addOrUpdateExercise(Exercise exercise) async {
+    await _repository.saveExercise(exercise);
+
+    if (exercise.dayKey == _selectedDayKey) {
+      final existingIndex = _exercises.indexWhere((e) => e.id == exercise.id);
+      if (existingIndex == -1) {
+        // Newly added exercise to active session: add default sets if session exists
+        if (_currentSession != null) {
+          for (int i = 1; i <= exercise.defaultSets; i++) {
+            final newSet = WorkoutSet(
+              id: 'set_${_uuid.v4().substring(0, 8)}',
+              sessionId: _currentSession!.id,
+              exerciseId: exercise.id,
+              setNumber: i,
+              weightKg: 0.0,
+              reps: 0,
+              isCompleted: false,
+            );
+            await _repository.saveSet(newSet);
+            _currentSets.add(newSet);
+          }
+        }
+      }
+      _exercises = await _repository.getExercisesForDay(_selectedDayKey);
+      _lastSets[exercise.id] = await _repository.getLastCompletedSet(exercise.id);
+    }
+    notifyListeners();
+  }
+
+  Future<void> deleteExercise(String exerciseId, {String? dayKey}) async {
+    await _repository.deleteExercise(exerciseId);
+    final targetDay = dayKey ?? _selectedDayKey;
+    if (targetDay == _selectedDayKey) {
+      _exercises.removeWhere((e) => e.id == exerciseId);
+      _currentSets.removeWhere((s) => s.exerciseId == exerciseId);
+      _lastSets.remove(exerciseId);
+    }
+    notifyListeners();
+  }
+
+  Future<void> reorderExercises(List<Exercise> reordered) async {
+    _exercises = List.from(reordered);
+    notifyListeners();
+    await _repository.reorderExercises(reordered);
+  }
+
+  // --- SETS & SESSION ---
   List<WorkoutSet> getSetsForExercise(String exerciseId) {
     return _currentSets
         .where((s) => s.exerciseId == exerciseId)

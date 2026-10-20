@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../core/constants/default_routines.dart';
 import '../../core/database/app_database.dart';
 import '../models/exercise_model.dart';
+import '../models/routine_model.dart';
 import '../models/workout_session_model.dart';
 import '../models/workout_set_model.dart';
 
@@ -11,6 +12,48 @@ class WorkoutRepository {
   WorkoutRepository({AppDatabase? dbProvider})
       : _dbProvider = dbProvider ?? AppDatabase.instance;
 
+  // --- ROUTINES ---
+  Future<List<Routine>> getRoutines() async {
+    final db = await _dbProvider.database;
+    var result = await db.query(
+      'routines',
+      orderBy: 'orderIndex ASC',
+    );
+
+    if (result.isEmpty) {
+      final batch = db.batch();
+      for (final routine in DefaultData.defaultRoutines) {
+        batch.insert('routines', routine.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      await batch.commit(noResult: true);
+      result = await db.query(
+        'routines',
+        orderBy: 'orderIndex ASC',
+      );
+    }
+
+    return result.map((m) => Routine.fromMap(m)).toList();
+  }
+
+  Future<void> saveRoutine(Routine routine) async {
+    final db = await _dbProvider.database;
+    await db.insert(
+      'routines',
+      routine.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> deleteRoutine(String id, String dayKey) async {
+    final db = await _dbProvider.database;
+    await db.transaction((txn) async {
+      await txn.delete('routines', where: 'id = ?', whereArgs: [id]);
+      await txn.delete('exercises', where: 'dayKey = ?', whereArgs: [dayKey]);
+    });
+  }
+
+  // --- EXERCISES ---
   Future<List<Exercise>> getExercisesForDay(String dayKey) async {
     final db = await _dbProvider.database;
     var result = await db.query(
@@ -19,22 +62,52 @@ class WorkoutRepository {
       whereArgs: [dayKey],
       orderBy: 'orderIndex ASC',
     );
-    if (result.isEmpty) {
-      final batch = db.batch();
-      for (final ex in DefaultData.defaultExercises) {
-        batch.insert('exercises', ex.toMap());
-      }
-      await batch.commit(noResult: true);
-      result = await db.query(
-        'exercises',
-        where: 'dayKey = ?',
-        whereArgs: [dayKey],
-        orderBy: 'orderIndex ASC',
-      );
-    }
     return result.map((m) => Exercise.fromMap(m)).toList();
   }
 
+  Future<Exercise?> getExerciseById(String exerciseId) async {
+    final db = await _dbProvider.database;
+    final result = await db.query(
+      'exercises',
+      where: 'id = ?',
+      whereArgs: [exerciseId],
+      limit: 1,
+    );
+    if (result.isNotEmpty) {
+      return Exercise.fromMap(result.first);
+    }
+    return null;
+  }
+
+  Future<void> saveExercise(Exercise exercise) async {
+    final db = await _dbProvider.database;
+    await db.insert(
+      'exercises',
+      exercise.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> deleteExercise(String exerciseId) async {
+    final db = await _dbProvider.database;
+    await db.delete('exercises', where: 'id = ?', whereArgs: [exerciseId]);
+  }
+
+  Future<void> reorderExercises(List<Exercise> exercises) async {
+    final db = await _dbProvider.database;
+    final batch = db.batch();
+    for (int i = 0; i < exercises.length; i++) {
+      batch.update(
+        'exercises',
+        {'orderIndex': i + 1},
+        where: 'id = ?',
+        whereArgs: [exercises[i].id],
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  // --- SESSIONS & SETS ---
   Future<WorkoutSession> getOrCreateSession(String date, String dayKey) async {
     final db = await _dbProvider.database;
     final existing = await db.query(

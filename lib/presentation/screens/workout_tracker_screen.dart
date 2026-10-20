@@ -1,43 +1,67 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../../core/constants/default_routines.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/models/exercise_model.dart';
 import '../providers/workout_provider.dart';
 import '../widgets/exercise_card.dart';
+import '../widgets/exercise_form_dialog.dart';
 import '../widgets/rest_timer_dialog.dart';
+import 'routine_detail_editor_screen.dart';
+import 'routine_management_screen.dart';
 
 class WorkoutTrackerScreen extends StatelessWidget {
   const WorkoutTrackerScreen({super.key});
 
+  Future<void> _editExercise(
+    BuildContext context,
+    WorkoutProvider prov,
+    Exercise ex,
+  ) async {
+    final updated = await ExerciseFormDialog.show(
+      context,
+      dayKey: ex.dayKey,
+      initialExercise: ex,
+    );
+    if (updated != null) {
+      await prov.addOrUpdateExercise(updated);
+    }
+  }
+
+  Future<void> _addNewExercise(BuildContext context, WorkoutProvider prov) async {
+    final nextOrder = prov.exercises.isEmpty ? 1 : prov.exercises.last.orderIndex + 1;
+    final created = await ExerciseFormDialog.show(
+      context,
+      dayKey: prov.selectedDayKey,
+      nextOrderIndex: nextOrder,
+    );
+    if (created != null) {
+      await prov.addOrUpdateExercise(created);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final workoutProv = context.watch<WorkoutProvider>();
-
-    final dayKeys = [
-      'lunes',
-      'martes',
-      'miercoles',
-      'jueves',
-      'viernes_a',
-      'viernes_b',
-    ];
-
-    final dayLabels = [
-      'LUN: Pecho/Bíceps',
-      'MAR: Espalda/Tríceps',
-      'MIÉ: Piernas/Cuádriceps',
-      'JUE: Hombro/Trapecio',
-      'VIE (A): Femoral/Glúteo',
-      'VIE (B): Brazos',
-    ];
-
-    final currentDayTitle = DefaultData.dayNames[workoutProv.selectedDayKey] ?? 'Entrenamiento';
+    final routines = workoutProv.routines;
+    final currentRoutine = workoutProv.currentRoutine;
+    final currentDayTitle = workoutProv.currentRoutineTitle;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Rutinas de Gimnasio'),
         actions: [
+          IconButton(
+            tooltip: 'Gestionar Rutinas',
+            icon: const Icon(Icons.tune),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const RoutineManagementScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Cambiar Fecha',
             icon: const Icon(Icons.event),
@@ -69,25 +93,42 @@ class WorkoutTrackerScreen extends StatelessWidget {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Day Selector Horizontal Scroll
+                // Day Selector Horizontal Scroll (Dynamic from Routines)
                 Container(
                   color: AppTheme.darkSurface,
-                  height: 52,
+                  height: 54,
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    itemCount: dayKeys.length,
+                    itemCount: routines.length + 1,
                     itemBuilder: (context, index) {
-                      final key = dayKeys[index];
-                      final isSelected = workoutProv.selectedDayKey == key;
+                      if (index == routines.length) {
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ActionChip(
+                            avatar: const Icon(Icons.add, size: 16, color: AppTheme.primaryColor),
+                            label: const Text('Nueva Rutina', style: TextStyle(fontSize: 12)),
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const RoutineManagementScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      }
+
+                      final r = routines[index];
+                      final isSelected = workoutProv.selectedDayKey == r.dayKey;
 
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: ChoiceChip(
-                          label: Text(dayLabels[index]),
+                          label: Text('${r.icon ?? '💪'} ${r.name}'),
                           selected: isSelected,
                           onSelected: (selected) {
-                            if (selected) workoutProv.selectDay(key);
+                            if (selected) workoutProv.selectDay(r.dayKey);
                           },
                           selectedColor: AppTheme.primaryColor,
                           labelStyle: TextStyle(
@@ -108,23 +149,51 @@ class WorkoutTrackerScreen extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            DateFormat('EEEE, d MMMM yyyy', 'es_ES').format(workoutProv.selectedDate),
-                            style: const TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            currentDayTitle,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              DateFormat('EEEE, d MMMM yyyy', 'es_ES')
+                                  .format(workoutProv.selectedDate),
+                              style: const TextStyle(fontSize: 11, color: Colors.grey),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    currentDayTitle,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (currentRoutine != null) ...[
+                                  const SizedBox(width: 4),
+                                  InkWell(
+                                    onTap: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => RoutineDetailEditorScreen(
+                                            routine: currentRoutine,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(4),
+                                      child: Icon(Icons.edit_note, size: 18, color: AppTheme.primaryColor),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                       Row(
                         children: [
@@ -150,14 +219,64 @@ class WorkoutTrackerScreen extends StatelessWidget {
                 // Exercise Cards List
                 Expanded(
                   child: workoutProv.exercises.isEmpty
-                      ? const Center(child: Text('No hay ejercicios registrados para este día.'))
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.fitness_center_outlined, size: 56, color: Colors.grey),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'No hay ejercicios registrados para esta rutina.',
+                                style: TextStyle(color: Colors.white70, fontSize: 15),
+                              ),
+                              const SizedBox(height: 12),
+                              ElevatedButton.icon(
+                                onPressed: () => _addNewExercise(context, workoutProv),
+                                icon: const Icon(Icons.add),
+                                label: const Text('Añadir Ejercicio'),
+                              ),
+                              if (currentRoutine != null) ...[
+                                const SizedBox(height: 8),
+                                TextButton.icon(
+                                  onPressed: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => RoutineDetailEditorScreen(
+                                          routine: currentRoutine,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.edit, size: 16),
+                                  label: const Text('Abrir Editor de Rutina'),
+                                ),
+                              ],
+                            ],
+                          ),
+                        )
                       : ListView.builder(
                           padding: const EdgeInsets.only(top: 8, bottom: 80),
-                          itemCount: workoutProv.exercises.length + 1,
+                          itemCount: workoutProv.exercises.length + 2,
                           itemBuilder: (context, index) {
                             if (index == workoutProv.exercises.length) {
                               return Padding(
-                                padding: const EdgeInsets.all(16),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _addNewExercise(context, workoutProv),
+                                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                                  label: const Text('Añadir Ejercicio a esta Sesión'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    side: const BorderSide(color: AppTheme.primaryColor),
+                                    foregroundColor: AppTheme.primaryColor,
+                                  ),
+                                ),
+                              );
+                            }
+
+                            if (index == workoutProv.exercises.length + 1) {
+                              return Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                                 child: ElevatedButton.icon(
                                   onPressed: () => _showFinishDialog(context, workoutProv),
                                   icon: const Icon(Icons.flag),
@@ -186,6 +305,7 @@ class WorkoutTrackerScreen extends StatelessWidget {
                               onToggleComplete: (id) => workoutProv.toggleSetCompleted(id),
                               onAddSet: () => workoutProv.addSetToExercise(exercise.id),
                               onDeleteSet: (id) => workoutProv.removeSet(id),
+                              onEditExercise: () => _editExercise(context, workoutProv, exercise),
                             );
                           },
                         ),

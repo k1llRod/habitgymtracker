@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../../core/constants/default_routines.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/habit_model.dart';
 import '../providers/habit_provider.dart';
 import '../providers/workout_provider.dart';
 import '../widgets/rest_timer_dialog.dart';
+import 'routine_management_screen.dart';
 
 class TodayDashboardScreen extends StatelessWidget {
   final Function(int) onNavigateToTab;
@@ -35,7 +35,7 @@ class TodayDashboardScreen extends StatelessWidget {
     }
 
     final habitProgress = habits.isNotEmpty ? completedHabits / habits.length : 0.0;
-    final todayRoutineName = DefaultData.dayNames[workoutProv.selectedDayKey] ?? 'Entrenamiento';
+    final todayRoutineName = workoutProv.currentRoutineTitle;
 
     return Scaffold(
       appBar: AppBar(
@@ -192,10 +192,25 @@ class TodayDashboardScreen extends StatelessWidget {
                         'Entrenamiento de Hoy',
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                       ),
-                      TextButton.icon(
-                        onPressed: () => onNavigateToTab(2), // Go to Gym tab
-                        icon: const Icon(Icons.fitness_center, size: 16),
-                        label: const Text('Abrir Rutina'),
+                      Row(
+                        children: [
+                          IconButton(
+                            tooltip: 'Gestionar Rutinas',
+                            icon: const Icon(Icons.tune, size: 20, color: AppTheme.primaryColor),
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const RoutineManagementScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          TextButton.icon(
+                            onPressed: () => onNavigateToTab(2), // Go to Gym tab
+                            icon: const Icon(Icons.fitness_center, size: 16),
+                            label: const Text('Abrir Rutina'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
